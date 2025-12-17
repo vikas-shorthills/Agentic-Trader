@@ -1,2 +1,4 @@
 ## Run the multiapp and multiagent application in Google adk 
- cd Age
+ cd Agentic-Trader
+ pip install -r app/requirements.py
+ python -m app.main
