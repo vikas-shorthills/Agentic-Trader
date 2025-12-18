@@ -9,22 +9,24 @@ class Settings(BaseSettings):
     
     # LiteLLM Configuration
     litellm_model: str = "gemini-2.0-flash"
+    LITELLM_PROXY_API_KEY: str = ""
+    LITELLM_PROXY_API_BASE: str = ""
     
     # Application Configuration
     app_name: str = "AthenaTrader"
     log_level: str = "INFO"
-    ENVIRONMENT:str = "development" # development, staging, production
-    ADK_LOG_LEVEL:str = "INFO"
-    APP_NAME:str = "AthenaTrader"
-    ADK_HOST:str = "0.0.0.0"
-    ADK_PORT:int = 8000
-    API_VERSION:str = "1.0.0"
-    ENVIRONMENT:str = "development"
-    SESSION_BACKEND:str = "database"
-    SESSION_DB_URL:str = "sqlite+aiosqlite:///./storage/adk_sessions.db"   
-    SESSION_SQLITE_PATH:str = "./storage/adk_sessions.db"
-    LITELLM_PROXY_API_KEY :str = ""
-    LITELLM_PROXY_API_BASE:str = ""
+    ENVIRONMENT: str = "development"  # development, staging, production
+    ADK_LOG_LEVEL: str = "INFO"
+    APP_NAME: str = "AthenaTrader"
+    ADK_HOST: str = "0.0.0.0"
+    ADK_PORT: int = 8000
+    API_VERSION: str = "1.0.0"
+    SESSION_BACKEND: str = "database"
+    SESSION_DB_URL: str = "sqlite+aiosqlite:///./storage/adk_sessions.db"   
+    SESSION_SQLITE_PATH: str = "./storage/adk_sessions.db"
+    
+    # API Keys
+    ALPHA_VANTAGE_API_KEY: str = ""
     
     class Config:
         env_file = ".env"
