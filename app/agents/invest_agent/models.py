@@ -10,9 +10,23 @@ import litellm
 litellm.use_litellm_proxy = True
 
 # Load configuration from environment variables
-LITELLM_PROXY_API_KEY = os.getenv("LITELLM_PROXY_API_KEY", "***REMOVED_API_KEY***")
-LITELLM_PROXY_API_BASE = os.getenv("LITELLM_PROXY_API_BASE", "***REMOVED_URL***")
+# IMPORTANT: These MUST be set in .env file - no defaults for security
+LITELLM_PROXY_API_KEY = os.getenv("LITELLM_PROXY_API_KEY")
+LITELLM_PROXY_API_BASE = os.getenv("LITELLM_PROXY_API_BASE")
 LITELLM_MODEL = os.getenv("LITELLM_MODEL", "gemini-2.5-flash")
+
+# Validate required credentials
+if not LITELLM_PROXY_API_KEY:
+    raise ValueError(
+        "LITELLM_PROXY_API_KEY not found in environment variables. "
+        "Please set it in your .env file."
+    )
+
+if not LITELLM_PROXY_API_BASE:
+    raise ValueError(
+        "LITELLM_PROXY_API_BASE not found in environment variables. "
+        "Please set it in your .env file."
+    )
 
 # Fast LLM for quick analysis tasks
 agentic_fast_llm = LiteLlm(
