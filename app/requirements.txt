@@ -6,6 +6,10 @@ pydantic-settings
 greenlet
 
 # Investment agent dependencies
+kiteconnect>=4.3.0
 yfinance>=0.2.40
 pandas>=2.0.0
 requests>=2.31.0
+beautifulsoup4>=4.12.0
+tenacity>=8.2.0
+pyotp>=2.9.0
