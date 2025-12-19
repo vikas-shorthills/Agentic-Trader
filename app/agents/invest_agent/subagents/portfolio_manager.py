@@ -8,17 +8,12 @@ portfolio_manager = LlmAgent(
     model=agentic_reasoning_llm,
     instruction=PORTFOLIO_MANAGER_PROMPT + """
 
-    All Information Available:
-
-    📈 **Trading Strategy:**
-    {{trade_strategy}}
-
-    🔒 **Risk Manager's Assessment:**
-    {{vetted_strategy}}
-
-    📊 **Research Report:**
-    {{research_report}}
+    **Review the conversation history above to find all information:**
+    - Trading Strategy (from Trader)
+    - Risk Manager's Assessment (from RiskManager)
+    - Research Report (from Researcher)
+    - All analyst reports and debates
 
     Make your FINAL, EXECUTABLE investment decision.""",
-        output_key="final_output"
-    )
+    output_key="final_output"
+)

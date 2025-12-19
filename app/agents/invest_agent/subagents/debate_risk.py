@@ -19,7 +19,7 @@ from ..prompt import (
 )
 
 # Risky Debator - Advocates for high risk/high reward
-# Sees {{conservative_argument}} and {{neutral_argument}} from previous iteration
+# Uses default conversation history (include_contents='default')
 risky_debator = LlmAgent(
     name="RiskyDebator",
     model=agentic_reasoning_llm,
@@ -28,7 +28,7 @@ risky_debator = LlmAgent(
 )
 
 # Conservative Debator - Advocates for low risk/stability
-# Sees {{risky_argument}} and {{neutral_argument}}
+# Uses default conversation history (include_contents='default')
 conservative_debator = LlmAgent(
     name="ConservativeDebator",
     model=agentic_reasoning_llm,
@@ -37,7 +37,7 @@ conservative_debator = LlmAgent(
 )
 
 # Neutral Debator - Advocates for balanced approach
-# Sees {{risky_argument}} and {{conservative_argument}}
+# Uses default conversation history (include_contents='default')
 neutral_debator = LlmAgent(
     name="NeutralDebator",
     model=agentic_reasoning_llm,
@@ -45,7 +45,8 @@ neutral_debator = LlmAgent(
     output_key="neutral_argument"
 )
 
-# Risk Judge - Evaluates all three perspectives
+# Risk Judge - Evaluates all three perspectives from conversation history
+# Uses default conversation history (include_contents='default')
 risk_judge = LlmAgent(
     name="RiskJudge",
     model=agentic_reasoning_llm,

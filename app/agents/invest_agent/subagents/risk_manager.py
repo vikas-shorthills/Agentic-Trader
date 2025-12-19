@@ -8,26 +8,15 @@ risk_manager = LlmAgent(
     model=agentic_reasoning_llm,
     instruction=RISK_MANAGER_PROMPT + """
 
-    Trader's Investment Plan:
-    {{trade_strategy}}
-
-    Research Context:
-    {{research_report}}
-
-    Risk Debate Results:
-
-    🚀 **Risky Analyst's Final Argument (High Risk/High Reward):**
-    {{risky_argument}}
-
-    🛡️ **Conservative Analyst's Final Argument (Low Risk/Stability):**
-    {{conservative_argument}}
-
-    ⚖️ **Neutral Analyst's Final Argument (Balanced Approach):**
-    {{neutral_argument}}
-
-    📋 **Risk Debate Evaluation:**
-    {{risk_evaluation}}
+    **Review the conversation history above to find:**
+    - Trader's Investment Plan (from Trader)
+    - Research Context (from Researcher)
+    - Risk Debate Results:
+      - Risky Analyst's arguments (high risk/high reward)
+      - Conservative Analyst's arguments (low risk/stability)
+      - Neutral Analyst's arguments (balanced approach)
+      - Risk Judge's evaluation
 
     Your task: Evaluate the trader's proposal by considering ALL THREE risk perspectives from the debate. Start with the trader's original plan and adjust it based on the most compelling arguments from the risk analysts. Provide a clear, actionable recommendation: Buy, Sell, or Hold. Refine the trader's strategy to balance reward potential with appropriate risk management.""",
-        output_key="vetted_strategy"
-    )
+    output_key="vetted_strategy"
+)

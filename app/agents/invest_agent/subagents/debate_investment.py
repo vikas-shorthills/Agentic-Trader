@@ -13,7 +13,7 @@ from ..models import agentic_reasoning_llm
 from ..prompt import BULL_RESEARCHER_PROMPT, BEAR_RESEARCHER_PROMPT, DEBATE_JUDGE_PROMPT
 
 # Bull Researcher - Argues to BUY
-# Sees {{bear_argument}} from previous iteration
+# Uses default conversation history (include_contents='default')
 bull_researcher = LlmAgent(
     name="BullResearcher",
     model=agentic_reasoning_llm,
@@ -22,7 +22,7 @@ bull_researcher = LlmAgent(
 )
 
 # Bear Researcher - Argues to SELL  
-# Sees {{bull_argument}} from current iteration
+# Uses default conversation history (include_contents='default')
 bear_researcher = LlmAgent(
     name="BearResearcher",
     model=agentic_reasoning_llm,
@@ -30,7 +30,8 @@ bear_researcher = LlmAgent(
     output_key="bear_argument"
 )
 
-# Debate Judge - Evaluates both arguments
+# Debate Judge - Evaluates both arguments from conversation history
+# Uses default conversation history (include_contents='default')
 debate_judge = LlmAgent(
     name="DebateJudge",
     model=agentic_reasoning_llm,
