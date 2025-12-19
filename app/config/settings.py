@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # LiteLLM Configuration
-    litellm_model: str = "gemini-2.0-flash"
+    LITELLM_MODEL: str = "gemini-2.0-flash"
     LITELLM_PROXY_API_KEY: str = ""
     LITELLM_PROXY_API_BASE: str = ""
     
@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     
     # API Keys
     ALPHA_VANTAGE_API_KEY: str = ""
+    
+    # Zerodha API Configuration
+    zerodha_api_key: Optional[str] = None
+    zerodha_api_secret: Optional[str] = None
+    zerodha_access_token: Optional[str] = None
+    zerodha_redirect_url: Optional[str] = None
     
     class Config:
         env_file = ".env"
