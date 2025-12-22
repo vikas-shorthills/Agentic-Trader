@@ -9,16 +9,32 @@ import os
 # --- CONFIGURATION ---
 # NOTE: You need valid credentials from your Zerodha Kite Connect developer account.
 # Get these from: https://developers.kite.trade/
-API_KEY = os.getenv('ZERODHA_API_KEY')
-API_SECRET = os.getenv('ZERODHA_API_SECRET')  # Required for generating access tokens
-ACCESS_TOKEN = os.getenv('ZERODHA_ACCESS_TOKEN')  # Generated using API_KEY + API_SECRET
+# ACCESS_TOKEN is now fetched dynamically via get_access_token()
 
-# Security Note: Never commit real API credentials to version control!
-# Consider using environment variables instead:
-# import os
-# API_KEY = os.getenv('KITE_API_KEY')
-# API_SECRET = os.getenv('KITE_API_SECRET')
-# ACCESS_TOKEN = os.getenv('KITE_ACCESS_TOKEN')
+def get_access_token():
+    """
+    Get the current access token directly from the session file.
+    strictly reads from: /home/shtlp_0170/Videos/hackthon/Agentic-Trader/cache/kite_session.json
+    """
+    try:
+        import json
+        from pathlib import Path
+        
+        session_file = Path("/home/shtlp_0170/Videos/hackthon/Agentic-Trader/cache/kite_session.json")
+        
+        if session_file.exists():
+            with open(session_file, 'r') as f:
+                data = json.load(f)
+                token = data.get("access_token")
+                if token:
+                    return token
+    except Exception as e:
+        print(f"⚠️ Error reading token from file: {e}")
+        pass
+        
+    return None
+
+
 # ---------------------
 
 def generate_access_token(request_token):
@@ -77,10 +93,12 @@ def fetch_kite_instruments():
     Returns:
         pandas.DataFrame: DataFrame containing all instruments
     """
+    access_token = get_access_token()
+    
     url = "https://api.kite.trade/instruments"
     headers = {
         "X-Kite-Version": "3",
-        "Authorization": f"token {API_KEY}:{ACCESS_TOKEN}"
+        "Authorization": f"token {API_KEY}:{access_token}"
     }
 
     try:

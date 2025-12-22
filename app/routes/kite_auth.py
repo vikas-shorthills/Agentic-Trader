@@ -15,6 +15,7 @@ import os
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
+from pathlib import Path
 
 router = APIRouter(prefix="/auth/kite", tags=["kite-auth"])
 
@@ -24,12 +25,80 @@ API_SECRET = os.getenv("ZERODHA_API_SECRET")
 REDIRECT_URL = os.getenv("ZERODHA_REDIRECT_URL", "http://localhost:7777/auth/kite/callback")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:7777")
 
-# In-memory storage (in production, use Redis or database)
+# In-memory storage with file persistence
+SESSION_FILE = Path("/home/shtlp_0170/Videos/hackthon/Agentic-Trader/cache/kite_session.json")
 kite_session = {
     "access_token": None,
     "user_id": None,
     "expires_at": None,
 }
+
+
+def load_session_from_file():
+    """Load session from file on startup"""
+    try:
+        from pathlib import Path
+        import json
+        from app.services.scheduler_service import schedule_auto_logout
+        
+        if SESSION_FILE.exists():
+            with open(SESSION_FILE, 'r') as f:
+                data = json.load(f)
+                kite_session["access_token"] = data.get("access_token")
+                kite_session["user_id"] = data.get("user_id")
+                kite_session["expires_at"] = data.get("expires_at")
+            
+            # Check expiry and schedule logout
+            if kite_session.get("expires_at"):
+                try:
+                    expires_at = datetime.fromisoformat(kite_session["expires_at"])
+                    if datetime.now() < expires_at:
+                        print(f"✅ Loaded persistent Kite session from {SESSION_FILE}")
+                        schedule_auto_logout(expires_at)
+                        return True
+                    else:
+                        print("⏳ Loaded session is expired. Clearing...")
+                        kite_session["access_token"] = None
+                        kite_session["user_id"] = None
+                        kite_session["expires_at"] = None
+                        save_session_to_file()
+                except ValueError:
+                    pass
+                    
+            print(f"✅ Loaded persistent Kite session (expired/invalid) from {SESSION_FILE}")
+            return True
+            
+    except Exception as e:
+        print(f"⚠️  Failed to load session from file: {e}")
+    return False
+
+# Attempt to load session on module import
+load_session_from_file()
+
+
+def save_session_to_file():
+    """Save current session to file and schedule logout"""
+    try:
+        from pathlib import Path
+        import json
+        from app.services.scheduler_service import schedule_auto_logout
+        
+        SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(SESSION_FILE, 'w') as f:
+            json.dump(kite_session, f, indent=2)
+        print(f"💾 Saved Kite session to {SESSION_FILE}")
+        
+        # Schedule auto-logout if we have an expiry
+        if kite_session.get("expires_at"):
+            try:
+                expires_at = datetime.fromisoformat(kite_session["expires_at"])
+                schedule_auto_logout(expires_at)
+            except ValueError:
+                pass
+                
+    except Exception as e:
+        print(f"❌ Failed to save session to file: {e}")
 
 
 class KiteSessionResponse(BaseModel):
@@ -69,14 +138,17 @@ async def save_access_token(request: SaveTokenRequest):
         
         # Store session data
         # Note: We don't have user_id from this flow, so we'll use a placeholder
-        user_id = "KITE_USER"  # You can fetch this later using the access token if needed
-        expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
+        user_id = "KITE_USER"
+        expires_at = (datetime.now() + timedelta(minutes=2)).isoformat()
         
         kite_session["access_token"] = access_token
         kite_session["user_id"] = user_id
         kite_session["expires_at"] = expires_at
         
-        # Update the access token in companies.py
+        # Persist session to file
+        save_session_to_file()
+        
+        # Update the access token in companies.py (legacy support)
         update_access_token_in_file(access_token)
         
         print(f"✅ Access token saved successfully: {access_token[:20]}...")
@@ -153,6 +225,9 @@ async def kite_callback(
             kite_session["user_id"] = data['data']['user_id']
             kite_session["expires_at"] = (datetime.now() + timedelta(hours=24)).isoformat()
             
+            # Persist session to file
+            save_session_to_file()
+            
             # Update the access token in companies.py
             update_access_token_in_file(data['data']['access_token'])
             
@@ -180,6 +255,10 @@ async def get_kite_status():
     Returns:
         KiteSessionResponse: Current authentication status
     """
+    # Try to load if not in memory (redundancy)
+    if not kite_session.get("access_token"):
+        load_session_from_file()
+        
     is_authenticated = False
     
     if kite_session.get("access_token") and kite_session.get("expires_at"):
@@ -205,6 +284,9 @@ async def kite_logout():
     kite_session["access_token"] = None
     kite_session["user_id"] = None
     kite_session["expires_at"] = None
+    
+    # Update file to clear session
+    save_session_to_file()
     
     return {"success": True, "message": "Logged out successfully"}
 
@@ -252,4 +334,8 @@ def get_current_access_token() -> Optional[str]:
     Returns:
         str: Current access token or None
     """
+    # Ensure loaded
+    if not kite_session.get("access_token"):
+        load_session_from_file()
+        
     return kite_session.get("access_token")

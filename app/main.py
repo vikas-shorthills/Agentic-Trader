@@ -7,6 +7,7 @@ For development:
 """
 
 import uvicorn
+from contextlib import asynccontextmanager
 
 from app.application import create_application
 from app.config.settings import settings
@@ -15,6 +16,34 @@ from app.loggers.logging_config import get_logger, setup_logging
 setup_logging(log_level = settings.ADK_LOG_LEVEL,log_file=None,app_name=settings.APP_NAME,environment=settings.ENVIRONMENT)
 
 logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    """
+    Application lifespan manager.
+    Handles startup and shutdown events for the scheduler.
+    """
+    # Startup
+    logger.info("🚀 Application starting up...")
+    try:
+        from app.services.scheduler_service import setup_scheduled_jobs
+        setup_scheduled_jobs()
+        logger.info("✅ Scheduled jobs initialized")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize scheduler: {e}")
+    
+    yield
+    
+    # Shutdown
+    logger.info("🛑 Application shutting down...")
+    try:
+        from app.services.scheduler_service import shutdown_scheduler
+        shutdown_scheduler()
+        logger.info("✅ Scheduler shutdown complete")
+    except Exception as e:
+        logger.error(f"❌ Error during scheduler shutdown: {e}")
+
 
 app = create_application()
 

@@ -1,0 +1,33 @@
+{
+  "cached_at": "2025-12-22T18:27:32.237693",
+  "total_instruments": 126427,
+  "exchanges": [
+    "BFO",
+    "BSE",
+    "CDS",
+    "GLOBAL",
+    "MCX",
+    "NCO",
+    "NFO",
+    "NSE",
+    "NSEIX"
+  ],
+  "segments": [
+    "BFO-FUT",
+    "BFO-OPT",
+    "BSE",
+    "CDS-FUT",
+    "CDS-OPT",
+    "INDICES",
+    "MCX-FUT",
+    "MCX-OPT",
+    "NCO",
+    "NCO-FUT",
+    "NCO-OPT",
+    "NFO-FUT",
+    "NFO-OPT",
+    "NSE"
+  ],
+  "file_format": "csv.gz",
+  "file_size_bytes": 1653091
+}
