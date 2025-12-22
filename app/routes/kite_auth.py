@@ -223,7 +223,7 @@ async def kite_callback(
             # Store session data
             kite_session["access_token"] = data['data']['access_token']
             kite_session["user_id"] = data['data']['user_id']
-            kite_session["expires_at"] = (datetime.now() + timedelta(hours=24)).isoformat()
+            kite_session["expires_at"] = (datetime.now() + timedelta(hours=4)).isoformat()
             
             # Persist session to file
             save_session_to_file()
