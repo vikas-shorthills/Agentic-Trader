@@ -1,7 +1,7 @@
 """
 Investment Agent Tools
 Stock data fetching tools for ADK agents
-Uses Google News for reliable news fetching
+Uses Finnhub for reliable news fetching
 """
 import yfinance as yf
 import pandas as pd
@@ -10,7 +10,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 
 from app.services.zerodha_service import get_zerodha_service
-from .googlenews_utils import getNewsData, getGlobalNewsData
+from app.config.settings import settings
 
 #Stock data and Indicators - Used by MarketAnalyst
 def get_stock_data(ticker: str, start_date: str, end_date: str) -> str:
@@ -201,106 +201,150 @@ def get_indicators(ticker: str, date: str, indicators: List[str]) -> str:
         return f"Error calculating indicators: {str(e)}"
 
 #News - Used by SocialMediaAnalyst and NewsAnalyst
-def get_news(ticker: str, start_date: str, end_date: str) -> str:
+def get_news(ticker: str, max_results: int = 10) -> str:
     """
-    Get company-specific news using Google News (yfinance is broken)
+    Get company-specific news using Finnhub API
     
     Args:
-        ticker: Stock ticker symbol (e.g., 'AAPL', 'INFY')
-        start_date: Start date in YYYY-MM-DD format
-        end_date: End date in YYYY-MM-DD format
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'INFY', 'TCS')
+        max_results: Maximum number of news articles to return (default: 10)
         
     Returns:
-        String with news articles from Google News
+        String with recent news articles from Finnhub
     """
     try:
-        # Get company info for better search query
-        yf_ticker = ticker
-        if not ('.' in ticker or '^' in ticker):  # Indian stock
-            yf_ticker = f"{ticker}.NS"
+        # Get Finnhub API key from settings
+        api_key = settings.FINNHUB_API_KEY
+        if not api_key:
+            return "Error: FINNHUB_API_KEY not configured in .env file. Please add your Finnhub API key."
         
-        # Try to get company name for better search
-        try:
-            stock = yf.Ticker(yf_ticker)
-            company_name = stock.info.get('longName', ticker)
-            # Use both company name and ticker for better results
-            query = f"{company_name} stock {ticker}"
-        except:
-            # Fallback to just ticker
-            query = f"{ticker} stock news"
+        # Calculate date range (last 30 days)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=30)
+        from_date = start_date.strftime('%Y-%m-%d')
+        to_date = end_date.strftime('%Y-%m-%d')
         
-        # Fetch news from Google News
-        news_results = getNewsData(query, start_date, end_date, max_results=15)
+        # For Indian stocks, Finnhub might not have data, so try US ticker format
+        # Finnhub uses uppercase tickers without exchange suffixes
+        finnhub_ticker = ticker.upper().replace('.NS', '').replace('.BSE', '')
         
-        if not news_results:
-            return f"No news found for {ticker} ({start_date} to {end_date}). The company may not have recent news coverage."
+        # Call Finnhub company news API
+        url = f"https://finnhub.io/api/v1/company-news"
+        params = {
+            'symbol': finnhub_ticker,
+            'from': from_date,
+            'to': to_date,
+            'token': api_key
+        }
         
-        output = f"News for {ticker} ({start_date} to {end_date}) from Google News:\n\n"
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
         
-        for i, article in enumerate(news_results[:10], 1):
-            title = article.get('title', 'No title')
-            source = article.get('source', 'Unknown')
-            link = article.get('link', 'No link')
-            date = article.get('date', 'Unknown date')
-            snippet = article.get('snippet', '')
+        news_data = response.json()
+        
+        if not news_data or len(news_data) == 0:
+            return f"No recent news found for {ticker} ({finnhub_ticker}). The company may not have recent news coverage or may not be available in Finnhub."
+        
+        output = f"Recent News for {ticker} ({finnhub_ticker}):\n\n"
+        
+        # Format news articles
+        for i, article in enumerate(news_data[:max_results], 1):
+            headline = article.get('headline', 'No title')
+            source = article.get('source', 'Unknown source')
+            url_link = article.get('url', 'No link')
             
-            output += f"{i}. [{date}] {title}\n"
+            # Convert Unix timestamp to readable date
+            timestamp = article.get('datetime', 0)
+            if timestamp:
+                date_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
+            else:
+                date_str = 'Unknown date'
+            
+            summary = article.get('summary', '')
+            
+            output += f"{i}. [{date_str}] {headline}\n"
             output += f"   Source: {source}\n"
-            output += f"   Summary: {snippet}\n"
-            output += f"   Link: {link}\n\n"
+            if summary:
+                # Truncate summary to first 150 characters
+                summary_truncated = summary[:150] + '...' if len(summary) > 150 else summary
+                output += f"   Summary: {summary_truncated}\n"
+            output += f"   Link: {url_link}\n\n"
         
         return output
+        
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching news for {ticker}: Network error - {str(e)}. Please check your internet connection."
     except Exception as e:
-        return f"Error fetching news for {ticker}: {str(e)}. Google News may be temporarily unavailable."
+        return f"Error fetching news for {ticker}: {str(e)}. Please verify the ticker symbol and API key."
 
 
-def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 10) -> str:
+
+def get_global_news(max_results: int = 15) -> str:
     """
-    Get global financial news using Google News
-    Much more reliable than yfinance
+    Get global financial/market news using Finnhub API
     
     Args:
-        curr_date: Current date in YYYY-MM-DD format
-        look_back_days: Number of days to look back (default: 7)
-        limit: Maximum number of articles (default: 10)
+        max_results: Maximum number of articles to return (default: 15)
         
     Returns:
-        String with global market news from Google News
+        String with global market news from Finnhub
     """
     try:
-        # Define search queries for global market news
-        queries = [
-            "global stock market news",
-            "stock market today",
-            "financial markets",
-            "economy news",
-            "India stock market SENSEX NIFTY",
-            "Wall Street news"
-        ]
+        # Get Finnhub API key from settings
+        api_key = settings.FINNHUB_API_KEY
+        if not api_key:
+            return "Error: FINNHUB_API_KEY not configured in .env file. Please add your Finnhub API key."
         
-        # Fetch news from Google News
-        news_results = getGlobalNewsData(queries, curr_date, look_back_days, limit=limit)
+        # Call Finnhub market news API
+        # Categories: general, forex, crypto, merger
+        url = "https://finnhub.io/api/v1/news"
+        params = {
+            'category': 'general',
+            'token': api_key
+        }
         
-        if not news_results:
-            return f"No global market news found for the specified period. Google News may be temporarily unavailable or rate limiting."
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
         
-        output = f"Global Market News ({curr_date}, past {look_back_days} days) from Google News:\n\n"
+        news_data = response.json()
         
-        for i, article in enumerate(news_results[:limit], 1):
-            title = article.get('title', 'No title')
-            source = article.get('source', 'Unknown')
-            link = article.get('link', 'No link')
-            date = article.get('date', 'Unknown date')
-            snippet = article.get('snippet', '')
+        if not news_data or len(news_data) == 0:
+            return "No global market news found. This may be due to temporary API issues."
+        
+        output = "Global Market News (Recent):\n\n"
+        
+        # Format articles
+        for i, article in enumerate(news_data[:max_results], 1):
+            headline = article.get('headline', 'No title')
+            source = article.get('source', 'Unknown source')
+            url_link = article.get('url', 'No link')
             
-            output += f"{i}. [{date}] {title}\n"
+            # Convert Unix timestamp to readable date
+            timestamp = article.get('datetime', 0)
+            if timestamp:
+                date_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
+            else:
+                date_str = 'Unknown date'
+            
+            summary = article.get('summary', '')
+            category = article.get('category', '')
+            
+            output += f"{i}. [{date_str}] {headline}\n"
             output += f"   Source: {source}\n"
-            output += f"   Summary: {snippet}\n"
-            output += f"   Link: {link}\n\n"
+            if category:
+                output += f"   Category: {category}\n"
+            if summary:
+                # Truncate summary to first 150 characters
+                summary_truncated = summary[:150] + '...' if len(summary) > 150 else summary
+                output += f"   Summary: {summary_truncated}\n"
+            output += f"   Link: {url_link}\n\n"
         
         return output
+        
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching global news: Network error - {str(e)}. Please check your internet connection."
     except Exception as e:
-        return f"Error fetching global news: {str(e)}. Google News may be temporarily unavailable or rate limiting."
+        return f"Error fetching global news: {str(e)}. Please verify your API key configuration."
 
 #Company Fundamentals - Used by FundamentalAnalyst
 def get_fundamentals(ticker: str) -> str:
