@@ -25,8 +25,7 @@ wheels/
 *.egg
 app/utils/data/
 app/utils/data_200/
- 
-# Environment
+
 .env
 .env.local
 .adk
@@ -45,9 +44,3 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
- 
-# Database
-storage/adk_sessions.db
- 
- 
- 

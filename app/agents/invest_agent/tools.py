@@ -1,7 +1,7 @@
 """
 Investment Agent Tools
 Stock data fetching tools for ADK agents
-Uses Google News for reliable news fetching
+Uses DuckDuckGo search for reliable news (no API key needed!)
 """
 import yfinance as yf
 import pandas as pd
@@ -10,7 +10,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 
 from app.services.zerodha_service import get_zerodha_service
-from .googlenews_utils import getNewsData, getGlobalNewsData
+from duckduckgo_search import DDGS
 
 #Stock data and Indicators - Used by MarketAnalyst
 def get_stock_data(ticker: str, start_date: str, end_date: str) -> str:
@@ -201,106 +201,135 @@ def get_indicators(ticker: str, date: str, indicators: List[str]) -> str:
         return f"Error calculating indicators: {str(e)}"
 
 #News - Used by SocialMediaAnalyst and NewsAnalyst
-def get_news(ticker: str, start_date: str, end_date: str) -> str:
+def get_news(ticker: str, max_results: int = 10) -> str:
     """
-    Get company-specific news using Google News (yfinance is broken)
+    Get company-specific news using DuckDuckGo search
+    Works great for both Indian and US stocks - NO API KEY NEEDED!
     
     Args:
-        ticker: Stock ticker symbol (e.g., 'AAPL', 'INFY')
-        start_date: Start date in YYYY-MM-DD format
-        end_date: End date in YYYY-MM-DD format
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'INFY', 'TCS')
+        max_results: Maximum number of news articles to return (default: 10)
         
     Returns:
-        String with news articles from Google News
+        String with recent news articles from DuckDuckGo search
     """
     try:
-        # Get company info for better search query
-        yf_ticker = ticker
-        if not ('.' in ticker or '^' in ticker):  # Indian stock
-            yf_ticker = f"{ticker}.NS"
-        
-        # Try to get company name for better search
+        # Try to get company name from yfinance for better search
         try:
+            # For Indian stocks, append .NS to get info
+            yf_ticker = ticker if '.' in ticker else f"{ticker}.NS"
             stock = yf.Ticker(yf_ticker)
             company_name = stock.info.get('longName', ticker)
-            # Use both company name and ticker for better results
-            query = f"{company_name} stock {ticker}"
+            
+            # Create search query with company name and ticker
+            query = f"{company_name} {ticker} stock news financial"
         except:
             # Fallback to just ticker
-            query = f"{ticker} stock news"
+            query = f"{ticker} stock news financial"
         
-        # Fetch news from Google News
-        news_results = getNewsData(query, start_date, end_date, max_results=15)
+        # Use DuckDuckGo search for news
+        # For Indian stocks, use 'in-en' region for better results
+        ddgs = DDGS()
+        results = ddgs.news(keywords=query, region="in-en", max_results=max_results)
         
-        if not news_results:
-            return f"No news found for {ticker} ({start_date} to {end_date}). The company may not have recent news coverage."
+        if not results or len(results) == 0:
+            return f"No recent news found for {ticker}. The company may not have recent news coverage."
         
-        output = f"News for {ticker} ({start_date} to {end_date}) from Google News:\n\n"
+        output = f"Recent News for {ticker}:\n\n"
         
-        for i, article in enumerate(news_results[:10], 1):
+        # Format news articles
+        for i, article in enumerate(results, 1):
             title = article.get('title', 'No title')
-            source = article.get('source', 'Unknown')
-            link = article.get('link', 'No link')
+            source = article.get('source', 'Unknown source')
+            url = article.get('url', 'No link')
             date = article.get('date', 'Unknown date')
-            snippet = article.get('snippet', '')
+            body = article.get('body', '')
             
             output += f"{i}. [{date}] {title}\n"
             output += f"   Source: {source}\n"
-            output += f"   Summary: {snippet}\n"
-            output += f"   Link: {link}\n\n"
+            if body:
+                # Truncate body to first 150 characters
+                body_truncated = body[:150] + '...' if len(body) > 150 else body
+                output += f"   Summary: {body_truncated}\n"
+            output += f"   Link: {url}\n\n"
         
         return output
+        
     except Exception as e:
-        return f"Error fetching news for {ticker}: {str(e)}. Google News may be temporarily unavailable."
+        return f"Error fetching news for {ticker}: {str(e)}. Please check your internet connection."
 
 
-def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 10) -> str:
+
+def get_global_news(max_results: int = 15) -> str:
     """
-    Get global financial news using Google News
-    Much more reliable than yfinance
+    Get global financial/market news using DuckDuckGo search
+    Focuses on Indian and global markets - NO API KEY NEEDED!
     
     Args:
-        curr_date: Current date in YYYY-MM-DD format
-        look_back_days: Number of days to look back (default: 7)
-        limit: Maximum number of articles (default: 10)
+        max_results: Maximum number of articles to return (default: 15)
         
     Returns:
-        String with global market news from Google News
+        String with global market news from DuckDuckGo search
     """
     try:
-        # Define search queries for global market news
+        # Search for global market news with focus on India
         queries = [
-            "global stock market news",
-            "stock market today",
-            "financial markets",
-            "economy news",
-            "India stock market SENSEX NIFTY",
-            "Wall Street news"
+            "Indian stock market news SENSEX NIFTY",
+            "global stock market news today",
+            "financial markets news"
         ]
         
-        # Fetch news from Google News
-        news_results = getGlobalNewsData(queries, curr_date, look_back_days, limit=limit)
+        all_news = []
+        seen_urls = set()  # For deduplication
         
-        if not news_results:
-            return f"No global market news found for the specified period. Google News may be temporarily unavailable or rate limiting."
+        # Fetch news from each query
+        for query in queries:
+            try:
+                ddgs = DDGS()
+                results = ddgs.news(keywords=query, region="in-en", max_results=10)
+                
+                if results:
+                    for article in results:
+                        url = article.get('url', '')
+                        # Deduplicate by URL
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            all_news.append(article)
+                            
+                            if len(all_news) >= max_results:
+                                break
+                
+                if len(all_news) >= max_results:
+                    break
+                    
+            except Exception:
+                continue
         
-        output = f"Global Market News ({curr_date}, past {look_back_days} days) from Google News:\n\n"
+        if not all_news:
+            return "No global market news found. This may be due to temporary connectivity issues."
         
-        for i, article in enumerate(news_results[:limit], 1):
+        output = "Global Market News (Recent):\n\n"
+        
+        # Format articles
+        for i, article in enumerate(all_news[:max_results], 1):
             title = article.get('title', 'No title')
-            source = article.get('source', 'Unknown')
-            link = article.get('link', 'No link')
+            source = article.get('source', 'Unknown source')
+            url = article.get('url', 'No link')
             date = article.get('date', 'Unknown date')
-            snippet = article.get('snippet', '')
+            body = article.get('body', '')
             
             output += f"{i}. [{date}] {title}\n"
             output += f"   Source: {source}\n"
-            output += f"   Summary: {snippet}\n"
-            output += f"   Link: {link}\n\n"
+            if body:
+                # Truncate body to first 150 characters
+                body_truncated = body[:150] + '...' if len(body) > 150 else body
+                output += f"   Summary: {body_truncated}\n"
+            output += f"   Link: {url}\n\n"
         
         return output
+        
     except Exception as e:
-        return f"Error fetching global news: {str(e)}. Google News may be temporarily unavailable or rate limiting."
+        return f"Error fetching global news: {str(e)}. Please check your internet connection."
 
 #Company Fundamentals - Used by FundamentalAnalyst
 def get_fundamentals(ticker: str) -> str:

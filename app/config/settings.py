@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # LiteLLM Configuration
-    LITELLM_MODEL: str = "gemini-2.0-flash"
+    LITELLM_MODEL: str = "hackathon-gemini-2.5-flash"
     LITELLM_PROXY_API_KEY: str = ""
     LITELLM_PROXY_API_BASE: str = ""
     
@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     
     # API Keys
     ALPHA_VANTAGE_API_KEY: str = ""
+    FINNHUB_API_KEY: str = ""  # Finnhub API key for news data
     
     # Zerodha API Configuration
     zerodha_api_key: Optional[str] = None
