@@ -17,12 +17,15 @@ from datetime import datetime, timedelta
 from typing import Optional
 from pathlib import Path
 
+from app.config.settings import settings
+
 router = APIRouter(prefix="/auth/kite", tags=["kite-auth"])
 
-# Configuration - These should be in environment variables
-API_KEY = os.getenv("ZERODHA_API_KEY")
-API_SECRET = os.getenv("ZERODHA_API_SECRET")
-REDIRECT_URL = os.getenv("ZERODHA_REDIRECT_URL", "http://localhost:7777/auth/kite/callback")
+# Configuration
+# properly load from settings which handles .env file
+API_KEY = settings.zerodha_api_key.strip() if settings.zerodha_api_key else None
+API_SECRET = settings.zerodha_api_secret.strip() if settings.zerodha_api_secret else None
+REDIRECT_URL = settings.zerodha_redirect_url or "http://localhost:7777/auth/kite/callback"
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:7777")
 
 # In-memory storage with file persistence
@@ -184,6 +187,9 @@ async def kite_callback(
     request_token: str = Query(..., description="Request token from Kite"),
     status: str = Query(default="success", description="Status from Kite")
 ):
+    # Sanitize inputs
+    request_token = request_token.strip() if request_token else request_token
+    
     """
     Handle callback from Kite after user authorization.
     
@@ -194,10 +200,23 @@ async def kite_callback(
     Returns:
         RedirectResponse: Redirects to frontend with auth status
     """
+    print(f"🔵 KITE CALLBACK RECEIVED: status={status}, token={request_token[:10]}...")
+    
     if status != "success" or not request_token:
+        print(f"🔴 Callback failed: status={status}, token_present={bool(request_token)}")
         return RedirectResponse(
             url=f"{FRONTEND_URL}/?kite_auth=failed&error=authorization_denied"
         )
+    
+    # Validate configuration
+    if not API_KEY or not API_SECRET:
+        print(f"🔴 Missing API Credentials: API_KEY={bool(API_KEY)}, API_SECRET={bool(API_SECRET)}")
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/?kite_auth=failed&error=server_configuration_error_missing_credentials"
+        )
+        
+    print(f"🔵 Auth Debug: API_KEY_LEN={len(API_KEY)}, API_SECRET_LEN={len(API_SECRET)}")
+    print(f"🔵 Auth Debug: API_KEY={API_KEY[:4]}...{API_KEY[-4:]}, API_SECRET={API_SECRET[:4]}...{API_SECRET[-4:]}")
     
     try:
         # Generate session using request token
@@ -215,9 +234,20 @@ async def kite_callback(
             "checksum": checksum
         }
         
+        print(f"🔵 Requesting session from Kite API: {url}")
         response = requests.post(url, data=payload)
+        
+        if not response.ok:
+            error_data = response.json() if response.headers.get('content-type') == 'application/json' else {'message': response.text}
+            error_msg = error_data.get('message', 'Unknown Error')
+            print(f"🔴 Kite API Error: {error_msg}")
+            return RedirectResponse(
+                url=f"{FRONTEND_URL}/?kite_auth=failed&error={error_msg}"
+            )
+            
         response.raise_for_status()
         data = response.json()
+        print(f"🟢 Kite API Response: {data.get('status')}")
         
         if data.get('status') == 'success':
             # Store session data
@@ -226,22 +256,27 @@ async def kite_callback(
             kite_session["expires_at"] = (datetime.now() + timedelta(hours=4)).isoformat()
             
             # Persist session to file
+            print("🔵 Attempting to save session to file...")
             save_session_to_file()
             
             # Update the access token in companies.py
             update_access_token_in_file(data['data']['access_token'])
             
+            print(f"🟢 Callback processed successfully. Redirecting to frontend: {FRONTEND_URL}")
             # Redirect to frontend with success
             return RedirectResponse(
                 url=f"{FRONTEND_URL}/?kite_auth=success&user_id={data['data']['user_id']}"
             )
         else:
+            print(f"🔴 Kite API status not success: {data}")
             return RedirectResponse(
                 url=f"{FRONTEND_URL}/?kite_auth=failed&error=session_generation_failed"
             )
             
     except Exception as e:
-        print(f"Error in Kite callback: {e}")
+        print(f"❌ Error in Kite callback: {e}")
+        import traceback
+        traceback.print_exc()
         return RedirectResponse(
             url=f"{FRONTEND_URL}/?kite_auth=failed&error={str(e)}"
         )
