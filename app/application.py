@@ -344,6 +344,7 @@ from app.config.settings import settings
 from app.services.session_service import get_session_service
 from app.routes.companies import router as companies_router
 from app.routes.portfolio import router as portfolio_router
+from app.routes.kite_auth import router as kite_auth_router
 
 logger = get_logger(__name__)
 
@@ -617,6 +618,7 @@ def create_application() -> FastAPI:
     # Step 9: Include API routers
     app.include_router(companies_router, prefix="/api/v1", include_in_schema=True)
     app.include_router(portfolio_router, prefix="/api/v1", include_in_schema=True)
+    app.include_router(kite_auth_router, prefix="/api/v1", include_in_schema=True)
 
     # Step 10: Add utility endpoints
     @app.get("/health", tags=["system"])

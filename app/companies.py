@@ -5,13 +5,13 @@ import io
 import re
 import hashlib
 from urllib.parse import urlencode
-
+import os
 # --- CONFIGURATION ---
 # NOTE: You need valid credentials from your Zerodha Kite Connect developer account.
 # Get these from: https://developers.kite.trade/
-API_KEY = "2j2xf518ahokaidb"
-API_SECRET = "40zqlt7f0ippycpx97w5bxa5ij4b8z44"  # Required for generating access tokens
-ACCESS_TOKEN = "AZIR44WE77t21yMsKgLjhmRBUZTwvoRQ"  # Generated using API_KEY + API_SECRET
+API_KEY = os.getenv('ZERODHA_API_KEY')
+API_SECRET = os.getenv('ZERODHA_API_SECRET')  # Required for generating access tokens
+ACCESS_TOKEN = os.getenv('ZERODHA_ACCESS_TOKEN')  # Generated using API_KEY + API_SECRET
 
 # Security Note: Never commit real API credentials to version control!
 # Consider using environment variables instead:

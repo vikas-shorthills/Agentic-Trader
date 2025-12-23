@@ -46,4 +46,7 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Database
+storage/adk_sessions.db
+
 
