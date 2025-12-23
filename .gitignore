@@ -23,6 +23,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+app/utils/data/
+app/utils/data_200/
 
 # Environment
 .env

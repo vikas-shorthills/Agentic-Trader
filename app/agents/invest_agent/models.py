@@ -36,7 +36,7 @@ agentic_fast_llm = LiteLlm(
 
 # Reasoning LLM for complex decision-making tasks
 agentic_reasoning_llm = LiteLlm(
-    model="gemini-2.5-pro",
+    model="hackathon-gemini-2.5-flash",
     api_key=LITELLM_PROXY_API_KEY,
     base_url=LITELLM_PROXY_API_BASE
 )

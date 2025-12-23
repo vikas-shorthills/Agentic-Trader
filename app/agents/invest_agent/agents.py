@@ -55,12 +55,12 @@ from .subagents import portfolio_manager
 # DEBATE LOOP DEFINITIONS
 # ============================================================================
 
-# Investment Debate Loop: Bull vs Bear (3 rounds)
+# Investment Debate Loop: Bull vs Bear (2 rounds)
 # Each round: Bull → Bear → Judge
-# Runs for full 3 rounds
+# Runs for full 2 rounds
 investment_debate_loop = LoopAgent(
     name="InvestmentDebate",
-    max_iterations=3,  # Always runs 3 full rounds
+    max_iterations=2,  # Always runs 2 full rounds
     sub_agents=[
         bull_researcher,    # Argues to BUY (sees {{bear_argument}})
         bear_researcher,    # Argues to SELL (sees {{bull_argument}})
@@ -86,9 +86,38 @@ risk_debate_loop = LoopAgent(
 # ROOT AGENT DEFINITION
 # ============================================================================
 
+# Input Handler Agent - Processes user requests and extracts ticker info
+from google.adk.agents import LlmAgent
+from .models import agentic_fast_llm
+
+input_handler = LlmAgent(
+    name="InputHandler",
+    model=agentic_fast_llm,
+    instruction="""You are an input processor for an investment analysis system.
+
+    When a user requests stock analysis (e.g., "Analyze INFY", "What do you think about TCS?", "Should I buy AAPL?"):
+
+    1. DO NOT ask the user for date ranges or additional information
+    2. Extract the ticker symbol for the company from web search or through your knowledge base
+    3. For Indian stocks, use the base ticker (e.g., "TCS" not "TCS.NS")
+    4. Return ONLY the ticker symbol in your response, nothing else
+
+    Examples:
+    - User: "Analyze INFY" → You respond: "INFY"
+    - User: "What's your take on TCS stock?" → You respond: "TCS"
+    - User: "Should I invest in Apple?" → You respond: "AAPL"
+    - User: "Tell me about Reliance" → You respond: "RELIANCE"
+
+    Your job is ONLY to extract and return the ticker. Do not provide analysis or ask questions.""",
+    output_key="ticker"
+)
+
 root_agent = SequentialAgent(
     name="invest_agent",
     sub_agents=[
+        # ========== INPUT PROCESSING ==========
+        input_handler,           # 0. Extract ticker from user input → ticker
+
         # ========== PHASE 1: ANALYSTS (Sequential) ==========
         market_analyst,          # 1. Technical analysis → market_report
         social_media_analyst,    # 2. Sentiment analysis → sentiment_report

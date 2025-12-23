@@ -1,7 +1,7 @@
 """
 Investment Agent Tools
 Stock data fetching tools for ADK agents
-Uses Finnhub for reliable news fetching
+Uses DuckDuckGo search for reliable news (no API key needed!)
 """
 import yfinance as yf
 import pandas as pd
@@ -10,7 +10,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 
 from app.services.zerodha_service import get_zerodha_service
-from app.config.settings import settings
+from duckduckgo_search import DDGS
 
 #Stock data and Indicators - Used by MarketAnalyst
 def get_stock_data(ticker: str, start_date: str, end_date: str) -> str:
@@ -203,148 +203,133 @@ def get_indicators(ticker: str, date: str, indicators: List[str]) -> str:
 #News - Used by SocialMediaAnalyst and NewsAnalyst
 def get_news(ticker: str, max_results: int = 10) -> str:
     """
-    Get company-specific news using Finnhub API
+    Get company-specific news using DuckDuckGo search
+    Works great for both Indian and US stocks - NO API KEY NEEDED!
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'INFY', 'TCS')
         max_results: Maximum number of news articles to return (default: 10)
         
     Returns:
-        String with recent news articles from Finnhub
+        String with recent news articles from DuckDuckGo search
     """
     try:
-        # Get Finnhub API key from settings
-        api_key = settings.FINNHUB_API_KEY
-        if not api_key:
-            return "Error: FINNHUB_API_KEY not configured in .env file. Please add your Finnhub API key."
+        # Try to get company name from yfinance for better search
+        try:
+            # For Indian stocks, append .NS to get info
+            yf_ticker = ticker if '.' in ticker else f"{ticker}.NS"
+            stock = yf.Ticker(yf_ticker)
+            company_name = stock.info.get('longName', ticker)
+            
+            # Create search query with company name and ticker
+            query = f"{company_name} {ticker} stock news financial"
+        except:
+            # Fallback to just ticker
+            query = f"{ticker} stock news financial"
         
-        # Calculate date range (last 30 days)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
-        from_date = start_date.strftime('%Y-%m-%d')
-        to_date = end_date.strftime('%Y-%m-%d')
+        # Use DuckDuckGo search for news
+        # For Indian stocks, use 'in-en' region for better results
+        ddgs = DDGS()
+        results = ddgs.news(keywords=query, region="in-en", max_results=max_results)
         
-        # For Indian stocks, Finnhub might not have data, so try US ticker format
-        # Finnhub uses uppercase tickers without exchange suffixes
-        finnhub_ticker = ticker.upper().replace('.NS', '').replace('.BSE', '')
+        if not results or len(results) == 0:
+            return f"No recent news found for {ticker}. The company may not have recent news coverage."
         
-        # Call Finnhub company news API
-        url = f"https://finnhub.io/api/v1/company-news"
-        params = {
-            'symbol': finnhub_ticker,
-            'from': from_date,
-            'to': to_date,
-            'token': api_key
-        }
-        
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        
-        news_data = response.json()
-        
-        if not news_data or len(news_data) == 0:
-            return f"No recent news found for {ticker} ({finnhub_ticker}). The company may not have recent news coverage or may not be available in Finnhub."
-        
-        output = f"Recent News for {ticker} ({finnhub_ticker}):\n\n"
+        output = f"Recent News for {ticker}:\n\n"
         
         # Format news articles
-        for i, article in enumerate(news_data[:max_results], 1):
-            headline = article.get('headline', 'No title')
+        for i, article in enumerate(results, 1):
+            title = article.get('title', 'No title')
             source = article.get('source', 'Unknown source')
-            url_link = article.get('url', 'No link')
+            url = article.get('url', 'No link')
+            date = article.get('date', 'Unknown date')
+            body = article.get('body', '')
             
-            # Convert Unix timestamp to readable date
-            timestamp = article.get('datetime', 0)
-            if timestamp:
-                date_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
-            else:
-                date_str = 'Unknown date'
-            
-            summary = article.get('summary', '')
-            
-            output += f"{i}. [{date_str}] {headline}\n"
+            output += f"{i}. [{date}] {title}\n"
             output += f"   Source: {source}\n"
-            if summary:
-                # Truncate summary to first 150 characters
-                summary_truncated = summary[:150] + '...' if len(summary) > 150 else summary
-                output += f"   Summary: {summary_truncated}\n"
-            output += f"   Link: {url_link}\n\n"
+            if body:
+                # Truncate body to first 150 characters
+                body_truncated = body[:150] + '...' if len(body) > 150 else body
+                output += f"   Summary: {body_truncated}\n"
+            output += f"   Link: {url}\n\n"
         
         return output
         
-    except requests.exceptions.RequestException as e:
-        return f"Error fetching news for {ticker}: Network error - {str(e)}. Please check your internet connection."
     except Exception as e:
-        return f"Error fetching news for {ticker}: {str(e)}. Please verify the ticker symbol and API key."
+        return f"Error fetching news for {ticker}: {str(e)}. Please check your internet connection."
 
 
 
 def get_global_news(max_results: int = 15) -> str:
     """
-    Get global financial/market news using Finnhub API
+    Get global financial/market news using DuckDuckGo search
+    Focuses on Indian and global markets - NO API KEY NEEDED!
     
     Args:
         max_results: Maximum number of articles to return (default: 15)
         
     Returns:
-        String with global market news from Finnhub
+        String with global market news from DuckDuckGo search
     """
     try:
-        # Get Finnhub API key from settings
-        api_key = settings.FINNHUB_API_KEY
-        if not api_key:
-            return "Error: FINNHUB_API_KEY not configured in .env file. Please add your Finnhub API key."
+        # Search for global market news with focus on India
+        queries = [
+            "Indian stock market news SENSEX NIFTY",
+            "global stock market news today",
+            "financial markets news"
+        ]
         
-        # Call Finnhub market news API
-        # Categories: general, forex, crypto, merger
-        url = "https://finnhub.io/api/v1/news"
-        params = {
-            'category': 'general',
-            'token': api_key
-        }
+        all_news = []
+        seen_urls = set()  # For deduplication
         
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
+        # Fetch news from each query
+        for query in queries:
+            try:
+                ddgs = DDGS()
+                results = ddgs.news(keywords=query, region="in-en", max_results=10)
+                
+                if results:
+                    for article in results:
+                        url = article.get('url', '')
+                        # Deduplicate by URL
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            all_news.append(article)
+                            
+                            if len(all_news) >= max_results:
+                                break
+                
+                if len(all_news) >= max_results:
+                    break
+                    
+            except Exception:
+                continue
         
-        news_data = response.json()
-        
-        if not news_data or len(news_data) == 0:
-            return "No global market news found. This may be due to temporary API issues."
+        if not all_news:
+            return "No global market news found. This may be due to temporary connectivity issues."
         
         output = "Global Market News (Recent):\n\n"
         
         # Format articles
-        for i, article in enumerate(news_data[:max_results], 1):
-            headline = article.get('headline', 'No title')
+        for i, article in enumerate(all_news[:max_results], 1):
+            title = article.get('title', 'No title')
             source = article.get('source', 'Unknown source')
-            url_link = article.get('url', 'No link')
+            url = article.get('url', 'No link')
+            date = article.get('date', 'Unknown date')
+            body = article.get('body', '')
             
-            # Convert Unix timestamp to readable date
-            timestamp = article.get('datetime', 0)
-            if timestamp:
-                date_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
-            else:
-                date_str = 'Unknown date'
-            
-            summary = article.get('summary', '')
-            category = article.get('category', '')
-            
-            output += f"{i}. [{date_str}] {headline}\n"
+            output += f"{i}. [{date}] {title}\n"
             output += f"   Source: {source}\n"
-            if category:
-                output += f"   Category: {category}\n"
-            if summary:
-                # Truncate summary to first 150 characters
-                summary_truncated = summary[:150] + '...' if len(summary) > 150 else summary
-                output += f"   Summary: {summary_truncated}\n"
-            output += f"   Link: {url_link}\n\n"
+            if body:
+                # Truncate body to first 150 characters
+                body_truncated = body[:150] + '...' if len(body) > 150 else body
+                output += f"   Summary: {body_truncated}\n"
+            output += f"   Link: {url}\n\n"
         
         return output
         
-    except requests.exceptions.RequestException as e:
-        return f"Error fetching global news: Network error - {str(e)}. Please check your internet connection."
     except Exception as e:
-        return f"Error fetching global news: {str(e)}. Please verify your API key configuration."
+        return f"Error fetching global news: {str(e)}. Please check your internet connection."
 
 #Company Fundamentals - Used by FundamentalAnalyst
 def get_fundamentals(ticker: str) -> str:
