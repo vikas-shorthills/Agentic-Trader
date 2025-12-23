@@ -15,21 +15,93 @@ import os
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
+from pathlib import Path
+
+from app.config.settings import settings
 
 router = APIRouter(prefix="/auth/kite", tags=["kite-auth"])
 
-# Configuration - These should be in environment variables
-API_KEY = os.getenv("ZERODHA_API_KEY")
-API_SECRET = os.getenv("ZERODHA_API_SECRET")
-REDIRECT_URL = os.getenv("ZERODHA_REDIRECT_URL", "http://localhost:7777/auth/kite/callback")
+# Configuration
+# properly load from settings which handles .env file
+API_KEY = settings.zerodha_api_key.strip() if settings.zerodha_api_key else None
+API_SECRET = settings.zerodha_api_secret.strip() if settings.zerodha_api_secret else None
+REDIRECT_URL = settings.zerodha_redirect_url or "http://localhost:7777/auth/kite/callback"
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:7777")
 
-# In-memory storage (in production, use Redis or database)
+# In-memory storage with file persistence
+SESSION_FILE = Path("/home/shtlp_0170/Videos/hackthon/Agentic-Trader/cache/kite_session.json")
 kite_session = {
     "access_token": None,
     "user_id": None,
     "expires_at": None,
 }
+
+
+def load_session_from_file():
+    """Load session from file on startup"""
+    try:
+        from pathlib import Path
+        import json
+        from app.services.scheduler_service import schedule_auto_logout
+        
+        if SESSION_FILE.exists():
+            with open(SESSION_FILE, 'r') as f:
+                data = json.load(f)
+                kite_session["access_token"] = data.get("access_token")
+                kite_session["user_id"] = data.get("user_id")
+                kite_session["expires_at"] = data.get("expires_at")
+            
+            # Check expiry and schedule logout
+            if kite_session.get("expires_at"):
+                try:
+                    expires_at = datetime.fromisoformat(kite_session["expires_at"])
+                    if datetime.now() < expires_at:
+                        print(f"✅ Loaded persistent Kite session from {SESSION_FILE}")
+                        schedule_auto_logout(expires_at)
+                        return True
+                    else:
+                        print("⏳ Loaded session is expired. Clearing...")
+                        kite_session["access_token"] = None
+                        kite_session["user_id"] = None
+                        kite_session["expires_at"] = None
+                        save_session_to_file()
+                except ValueError:
+                    pass
+                    
+            print(f"✅ Loaded persistent Kite session (expired/invalid) from {SESSION_FILE}")
+            return True
+            
+    except Exception as e:
+        print(f"⚠️  Failed to load session from file: {e}")
+    return False
+
+# Attempt to load session on module import
+load_session_from_file()
+
+
+def save_session_to_file():
+    """Save current session to file and schedule logout"""
+    try:
+        from pathlib import Path
+        import json
+        from app.services.scheduler_service import schedule_auto_logout
+        
+        SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(SESSION_FILE, 'w') as f:
+            json.dump(kite_session, f, indent=2)
+        print(f"💾 Saved Kite session to {SESSION_FILE}")
+        
+        # Schedule auto-logout if we have an expiry
+        if kite_session.get("expires_at"):
+            try:
+                expires_at = datetime.fromisoformat(kite_session["expires_at"])
+                schedule_auto_logout(expires_at)
+            except ValueError:
+                pass
+                
+    except Exception as e:
+        print(f"❌ Failed to save session to file: {e}")
 
 
 class KiteSessionResponse(BaseModel):
@@ -69,14 +141,17 @@ async def save_access_token(request: SaveTokenRequest):
         
         # Store session data
         # Note: We don't have user_id from this flow, so we'll use a placeholder
-        user_id = "KITE_USER"  # You can fetch this later using the access token if needed
-        expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
+        user_id = "KITE_USER"
+        expires_at = (datetime.now() + timedelta(minutes=2)).isoformat()
         
         kite_session["access_token"] = access_token
         kite_session["user_id"] = user_id
         kite_session["expires_at"] = expires_at
         
-        # Update the access token in companies.py
+        # Persist session to file
+        save_session_to_file()
+        
+        # Update the access token in companies.py (legacy support)
         update_access_token_in_file(access_token)
         
         print(f"✅ Access token saved successfully: {access_token[:20]}...")
@@ -112,6 +187,9 @@ async def kite_callback(
     request_token: str = Query(..., description="Request token from Kite"),
     status: str = Query(default="success", description="Status from Kite")
 ):
+    # Sanitize inputs
+    request_token = request_token.strip() if request_token else request_token
+    
     """
     Handle callback from Kite after user authorization.
     
@@ -122,10 +200,23 @@ async def kite_callback(
     Returns:
         RedirectResponse: Redirects to frontend with auth status
     """
+    print(f"🔵 KITE CALLBACK RECEIVED: status={status}, token={request_token[:10]}...")
+    
     if status != "success" or not request_token:
+        print(f"🔴 Callback failed: status={status}, token_present={bool(request_token)}")
         return RedirectResponse(
             url=f"{FRONTEND_URL}/?kite_auth=failed&error=authorization_denied"
         )
+    
+    # Validate configuration
+    if not API_KEY or not API_SECRET:
+        print(f"🔴 Missing API Credentials: API_KEY={bool(API_KEY)}, API_SECRET={bool(API_SECRET)}")
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/?kite_auth=failed&error=server_configuration_error_missing_credentials"
+        )
+        
+    print(f"🔵 Auth Debug: API_KEY_LEN={len(API_KEY)}, API_SECRET_LEN={len(API_SECRET)}")
+    print(f"🔵 Auth Debug: API_KEY={API_KEY[:4]}...{API_KEY[-4:]}, API_SECRET={API_SECRET[:4]}...{API_SECRET[-4:]}")
     
     try:
         # Generate session using request token
@@ -143,30 +234,49 @@ async def kite_callback(
             "checksum": checksum
         }
         
+        print(f"🔵 Requesting session from Kite API: {url}")
         response = requests.post(url, data=payload)
+        
+        if not response.ok:
+            error_data = response.json() if response.headers.get('content-type') == 'application/json' else {'message': response.text}
+            error_msg = error_data.get('message', 'Unknown Error')
+            print(f"🔴 Kite API Error: {error_msg}")
+            return RedirectResponse(
+                url=f"{FRONTEND_URL}/?kite_auth=failed&error={error_msg}"
+            )
+            
         response.raise_for_status()
         data = response.json()
+        print(f"🟢 Kite API Response: {data.get('status')}")
         
         if data.get('status') == 'success':
             # Store session data
             kite_session["access_token"] = data['data']['access_token']
             kite_session["user_id"] = data['data']['user_id']
-            kite_session["expires_at"] = (datetime.now() + timedelta(hours=24)).isoformat()
+            kite_session["expires_at"] = (datetime.now() + timedelta(hours=4)).isoformat()
+            
+            # Persist session to file
+            print("🔵 Attempting to save session to file...")
+            save_session_to_file()
             
             # Update the access token in companies.py
             update_access_token_in_file(data['data']['access_token'])
             
+            print(f"🟢 Callback processed successfully. Redirecting to frontend: {FRONTEND_URL}")
             # Redirect to frontend with success
             return RedirectResponse(
                 url=f"{FRONTEND_URL}/?kite_auth=success&user_id={data['data']['user_id']}"
             )
         else:
+            print(f"🔴 Kite API status not success: {data}")
             return RedirectResponse(
                 url=f"{FRONTEND_URL}/?kite_auth=failed&error=session_generation_failed"
             )
             
     except Exception as e:
-        print(f"Error in Kite callback: {e}")
+        print(f"❌ Error in Kite callback: {e}")
+        import traceback
+        traceback.print_exc()
         return RedirectResponse(
             url=f"{FRONTEND_URL}/?kite_auth=failed&error={str(e)}"
         )
@@ -180,6 +290,10 @@ async def get_kite_status():
     Returns:
         KiteSessionResponse: Current authentication status
     """
+    # Try to load if not in memory (redundancy)
+    if not kite_session.get("access_token"):
+        load_session_from_file()
+        
     is_authenticated = False
     
     if kite_session.get("access_token") and kite_session.get("expires_at"):
@@ -205,6 +319,9 @@ async def kite_logout():
     kite_session["access_token"] = None
     kite_session["user_id"] = None
     kite_session["expires_at"] = None
+    
+    # Update file to clear session
+    save_session_to_file()
     
     return {"success": True, "message": "Logged out successfully"}
 
@@ -252,4 +369,8 @@ def get_current_access_token() -> Optional[str]:
     Returns:
         str: Current access token or None
     """
+    # Ensure loaded
+    if not kite_session.get("access_token"):
+        load_session_from_file()
+        
     return kite_session.get("access_token")

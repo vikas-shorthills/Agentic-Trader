@@ -345,6 +345,7 @@ from app.services.session_service import get_session_service
 from app.routes.companies import router as companies_router
 from app.routes.portfolio import router as portfolio_router
 from app.routes.kite_auth import router as kite_auth_router
+from app.routes.kite_instruments import router as kite_instruments_router
 
 logger = get_logger(__name__)
 
@@ -614,11 +615,20 @@ def create_application() -> FastAPI:
     
     
     logger.info("Authentication middleware configured")
+    
+    # Step 8.5: Initialize scheduled tasks
+    try:
+        from app.services.scheduler_service import setup_scheduled_jobs
+        setup_scheduled_jobs()
+        logger.info("✅ Scheduled tasks initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize scheduler: {e}")
 
     # Step 9: Include API routers
     app.include_router(companies_router, prefix="/api/v1", include_in_schema=True)
     app.include_router(portfolio_router, prefix="/api/v1", include_in_schema=True)
     app.include_router(kite_auth_router, prefix="/api/v1", include_in_schema=True)
+    app.include_router(kite_instruments_router, prefix="/api/v1", include_in_schema=True)
 
     # Step 10: Add utility endpoints
     @app.get("/health", tags=["system"])

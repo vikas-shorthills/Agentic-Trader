@@ -142,52 +142,106 @@ async def get_all_lists():
 @router.get("/nse/all")
 async def get_all_nse():
     """
-    Get all NSE equity companies.
+    Get all NSE equity companies from cached instruments.csv.gz file.
+    Falls back to API call if cache doesn't exist.
+    
+    The cache is automatically refreshed daily at 8:30 AM.
     
     Returns:
         dict: List of all NSE equity companies with details
     """
     try:
-        print("📊 Fetching all NSE companies...")  # Debug log
-        df = get_all_nse_companies()
+        print("📊 Fetching NSE companies from cache...")
         
-        if df is None or df.empty:
-            print("⚠️  No companies found or error fetching")
-            # Return empty result instead of error
+        # Try to get from cached instruments file first
+        from pathlib import Path
+        import gzip
+        import csv
+        import io
+        
+        CACHE_FILE = Path("/home/shtlp_0170/Videos/hackthon/Agentic-Trader/cache/instruments.csv.gz")
+        
+        if CACHE_FILE.exists():
+            print("✅ Found cached instruments file, reading from cache...")
+            
+            # Read gzipped CSV file
+            with open(CACHE_FILE, 'rb') as f:
+                gzipped_content = f.read()
+            
+            # Decompress
+            decompressed_data = gzip.decompress(gzipped_content)
+            csv_content = decompressed_data.decode('utf-8')
+            
+            # Parse CSV and filter for NSE equity companies
+            csv_reader = csv.DictReader(io.StringIO(csv_content))
+            companies = []
+            
+            for row in csv_reader:
+                # Filter: NSE exchange AND EQ instrument type AND NOT an index
+                if (row.get('exchange') == 'NSE' and 
+                    row.get('instrument_type') == 'EQ' and
+                    row.get('segment') != 'INDICES'):
+                    companies.append({
+                        'tradingsymbol': row.get('tradingsymbol', ''),
+                        'name': row.get('name', ''),
+                        'instrument_token': row.get('instrument_token', ''),
+                        'exchange': row.get('exchange', 'NSE')
+                    })
+            
+            print(f"✅ Found {len(companies)} NSE equity companies from cache")
+            
             return {
-                "companies": [],
-                "count": 0,
+                "companies": companies,
+                "count": len(companies),
                 "success": True,
-                "message": "No companies available. Please check Zerodha API credentials."
+                "source": "cache",
+                "message": "Data loaded from cached instruments file"
             }
-        
-        # Replace NaN/inf values with None for JSON serialization
-        df = df.replace({float('nan'): None, float('inf'): None, float('-inf'): None})
-        
-        # Convert to dict, only include tradingsymbol and name for simplicity
-        if 'tradingsymbol' in df.columns and 'name' in df.columns:
-            companies = df[['tradingsymbol', 'name']].to_dict('records')
         else:
-            companies = df.to_dict('records')
-        
-        print(f"✅ Fetched {len(companies)} companies")
-        
-        return {
-            "companies": companies,
-            "count": len(companies),
-            "success": True
-        }
+            print("⚠️  Cache file not found, fetching from API...")
+            # Fallback to API call
+            df = get_all_nse_companies()
+            
+            if df is None or df.empty:
+                print("⚠️  No companies found from API")
+                return {
+                    "companies": [],
+                    "count": 0,
+                    "success": True,
+                    "source": "api",
+                    "message": "No companies available. Please check Zerodha API credentials."
+                }
+            
+            # Replace NaN/inf values with None for JSON serialization
+            df = df.replace({float('nan'): None, float('inf'): None, float('-inf'): None})
+            
+            # Convert to dict
+            if 'tradingsymbol' in df.columns and 'name' in df.columns:
+                companies = df[['tradingsymbol', 'name']].to_dict('records')
+            else:
+                companies = df.to_dict('records')
+            
+            print(f"✅ Fetched {len(companies)} companies from API")
+            
+            return {
+                "companies": companies,
+                "count": len(companies),
+                "success": True,
+                "source": "api",
+                "message": "Data fetched from API. Cache will be available after 8:30 AM refresh."
+            }
+            
     except Exception as e:
         print(f"❌ Error in get_all_nse: {str(e)}")
         import traceback
         traceback.print_exc()
-        # Return empty result with error message instead of raising exception
+        
         return {
             "companies": [],
             "count": 0,
             "success": False,
             "error": str(e),
-            "message": "Failed to fetch NSE companies. Using fallback data."
+            "message": "Failed to fetch NSE companies."
         }
 
 
@@ -197,7 +251,7 @@ async def search_companies(
     limit: int = Query(50, ge=1, le=500, description="Maximum number of results")
 ):
     """
-    Search for companies across all NSE companies.
+    Search for companies across all NSE companies from cached instruments file.
     
     Args:
         query: Search query string
@@ -207,34 +261,88 @@ async def search_companies(
         dict: Search results with matching companies
     """
     try:
-        df = get_all_nse_companies()
+        from pathlib import Path
+        import gzip
+        import csv
+        import io
         
-        if df.empty:
+        CACHE_FILE = Path("/home/shtlp_0170/Videos/hackthon/Agentic-Trader/cache/instruments.csv.gz")
+        
+        if CACHE_FILE.exists():
+            # Read from cache
+            with open(CACHE_FILE, 'rb') as f:
+                gzipped_content = f.read()
+            
+            decompressed_data = gzip.decompress(gzipped_content)
+            csv_content = decompressed_data.decode('utf-8')
+            
+            # Parse and filter
+            csv_reader = csv.DictReader(io.StringIO(csv_content))
+            all_companies = []
+            
+            for row in csv_reader:
+                if (row.get('exchange') == 'NSE' and 
+                    row.get('instrument_type') == 'EQ' and
+                    row.get('segment') != 'INDICES'):
+                    all_companies.append({
+                        'tradingsymbol': row.get('tradingsymbol', ''),
+                        'name': row.get('name', ''),
+                        'instrument_token': row.get('instrument_token', ''),
+                        'exchange': 'NSE'
+                    })
+            
+            # Search in both symbol and name
+            query_lower = query.lower()
+            matches = []
+            total_matches = 0
+            
+            for company in all_companies:
+                if (query_lower in company['tradingsymbol'].lower() or 
+                    query_lower in company['name'].lower()):
+                    total_matches += 1
+                    if len(matches) < limit:
+                        matches.append(company)
+            
             return {
                 "query": query,
-                "companies": [],
-                "count": 0,
-                "success": True
+                "companies": matches,
+                "count": len(matches),
+                "total_matches": total_matches,
+                "limited": total_matches > limit,
+                "success": True,
+                "source": "cache"
             }
-        
-        # Search in both symbol and name columns
-        query_lower = query.lower()
-        mask = (
-            df['tradingsymbol'].str.lower().str.contains(query_lower, na=False) |
-            df['name'].str.lower().str.contains(query_lower, na=False)
-        )
-        
-        results = df[mask].head(limit)
-        companies = results.to_dict('records')
-        
-        return {
-            "query": query,
-            "companies": companies,
-            "count": len(companies),
-            "total_matches": mask.sum(),
-            "limited": mask.sum() > limit,
-            "success": True
-        }
+        else:
+            # Fallback to API
+            df = get_all_nse_companies()
+            
+            if df.empty:
+                return {
+                    "query": query,
+                    "companies": [],
+                    "count": 0,
+                    "success": True,
+                    "source": "api"
+                }
+            
+            query_lower = query.lower()
+            mask = (
+                df['tradingsymbol'].str.lower().str.contains(query_lower, na=False) |
+                df['name'].str.lower().str.contains(query_lower, na=False)
+            )
+            
+            results = df[mask].head(limit)
+            companies = results.to_dict('records')
+            
+            return {
+                "query": query,
+                "companies": companies,
+                "count": len(companies),
+                "total_matches": mask.sum(),
+                "limited": mask.sum() > limit,
+                "success": True,
+                "source": "api"
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error searching companies: {str(e)}")
 
