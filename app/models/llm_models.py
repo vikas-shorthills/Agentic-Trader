@@ -8,12 +8,12 @@ litellm.use_litellm_proxy = True
 
 
 agentic_fast_llm = LiteLlm(
-        model=settings.litellm_model,
+        model=settings.GEMINI_2_0_FLASH,
         api_key=settings.LITELLM_PROXY_API_KEY,
         base_url=settings.LITELLM_PROXY_API_BASE
     )
 agentic_reasoning_llm = LiteLlm(
-    model=settings.litellm_model,
+    model=settings.GEMINI_2_5_PRO,
     api_key=settings.LITELLM_PROXY_API_KEY,
     base_url=settings.LITELLM_PROXY_API_BASE
 )

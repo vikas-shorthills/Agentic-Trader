@@ -24,6 +24,7 @@ from app.loggers.logging_config import get_logger
 from app.loggers.middleware_logger import RequestLoggingMiddleware
 from app.config.settings import settings
 from app.services.session_service import get_session_service
+from app.api.v1.auth import router as auth_router
 
 logger = get_logger(__name__)
 
@@ -284,7 +285,7 @@ def create_application() -> FastAPI:
     logger.info("Authentication middleware configured")
 
     # Step 9: Include API routers
-    # app.include_router(auth_router, prefix="/api/v1", include_in_schema=True)
+    app.include_router(auth_router, prefix="/api/v1/auth", tags=["authentication"])
 
     # Step 10: Add utility endpoints
     @app.get("/health", tags=["system"])
